@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 import os
@@ -17,7 +17,12 @@ app.add_middleware(
 )
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-engine = create_engine(DATABASE_URL)
+engine = None
+if DATABASE_URL:
+    try:
+        engine = create_engine(DATABASE_URL)
+    except Exception as e:
+        print(f"Failed to create engine: {e}")
 
 
 @app.get("/")
@@ -30,15 +35,32 @@ def test():
     return "收到"
 
 
+@app.get("/health")
+def health():
+    if not engine:
+        return {"status": "error", "detail": "DATABASE_URL not set"}
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"status": "ok", "database": "connected"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+
+
 @app.get("/users")
 def get_users():
-    with engine.connect() as conn:
-        result = conn.execute(text("select * from users"))
-        users = []
-        for row in result:
-            users.append({
-                "id": row.id,
-                "name": row.name,
-                "email": row.email
-            })
-        return users
+    if not engine:
+        raise HTTPException(status_code=500, detail="DATABASE_URL not configured")
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("select * from users"))
+            users = []
+            for row in result:
+                users.append({
+                    "id": row.id,
+                    "name": row.name,
+                    "email": row.email
+                })
+            return users
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
