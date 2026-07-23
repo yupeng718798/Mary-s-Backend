@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database.connection import engine, Base
-from app.routers import profile, medical, consultation, medication, diary
+from app.routers import profile, medical, consultation, medication, diary, agent
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,6 +21,7 @@ app.include_router(medical.router)
 app.include_router(consultation.router)
 app.include_router(medication.router)
 app.include_router(diary.router)
+app.include_router(agent.router)
 
 
 @app.on_event("startup")
