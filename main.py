@@ -1,12 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, text
-import os
+from app.database.connection import engine, Base
+from app.routers import profile, medical, consultation, medication, diary
 from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI()
+app = FastAPI(title="Mary Healthcare AI API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -16,23 +16,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-engine = None
-if DATABASE_URL:
-    try:
-        engine = create_engine(DATABASE_URL)
-    except Exception as e:
-        print(f"Failed to create engine: {e}")
+app.include_router(profile.router)
+app.include_router(medical.router)
+app.include_router(consultation.router)
+app.include_router(medication.router)
+app.include_router(diary.router)
+
+
+@app.on_event("startup")
+def on_startup():
+    if engine is not None:
+        Base.metadata.create_all(bind=engine)
 
 
 @app.get("/")
 def root():
-    return {"message": "backend running"}
-
-
-@app.get("/test")
-def test():
-    return "收到"
+    return {"message": "Mary AI Healthcare Backend Running"}
 
 
 @app.get("/health")
@@ -40,27 +39,9 @@ def health():
     if not engine:
         return {"status": "error", "detail": "DATABASE_URL not set"}
     try:
+        from sqlalchemy import text
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         return {"status": "ok", "database": "connected"}
     except Exception as e:
         return {"status": "error", "detail": str(e)}
-
-
-@app.get("/users")
-def get_users():
-    if not engine:
-        raise HTTPException(status_code=500, detail="DATABASE_URL not configured")
-    try:
-        with engine.connect() as conn:
-            result = conn.execute(text("select * from users"))
-            users = []
-            for row in result:
-                users.append({
-                    "id": row.id,
-                    "name": row.name,
-                    "email": row.email
-                })
-            return users
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
