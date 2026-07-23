@@ -8,6 +8,7 @@ from app.schemas.medical import (
     MedicalAnalysisResponse, ReportCreate, ReportResponse
 )
 from app.services.ai_agent import medical_analysis as run_medical_analysis
+from app.services.ocr_service import extract_text
 import os
 import uuid
 
@@ -62,7 +63,32 @@ def analyze_record(record_id: UUID, db: Session = Depends(get_db)):
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
 
-    text = f"Title: {record.title}. Type: {record.record_type or 'general'}."
+    # 尝试提取文件内容
+    extracted = ""
+    if record.file_url and os.path.exists(record.file_url):
+        extracted = extract_text(record.file_url)
+
+    if extracted and not extracted.startswith("["):
+        text = (
+            f"患者上传了一份医疗文件。"
+            f"文件名: {record.title}. "
+            f"文件类型: {record.record_type or '一般检查'}. "
+            f"提取的文本内容:\n{extracted[:3000]}\n\n"
+            f"请基于上述内容进行分析，提供："
+            f"1. 简短摘要（2-3句话）"
+            f"2. 风险等级：low/medium/high"
+            f"3. 需要注意的关键细节或建议"
+        )
+    else:
+        text = (
+            f"患者上传了一份医疗文件。"
+            f"文件名: {record.title}. "
+            f"文件类型: {record.record_type or '一般检查'}. "
+            f"文件内容提取结果: {extracted or '无法提取'}. "
+            f"请基于文件名和类型，给出可能的检查项目说明、常见指标解读，以及一般性的健康建议。"
+            f"如果无法确定具体内容，请说明这是基于文件名的初步分析，建议患者查看实际报告。"
+        )
+
     result = run_medical_analysis(text)
 
     analysis = MedicalAnalysis(
