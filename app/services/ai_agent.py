@@ -85,9 +85,10 @@ def consultation_analysis(symptoms: str) -> str:
     if client is None:
         return (
             "1. When did your symptoms start?\n"
-            "2. Are you currently taking any medications?\n"
-            "3. Do you have any known allergies?\n"
-            "4. Please rate your pain level (1-10)"
+            "2. How would you describe the severity on a scale of 1-10?\n"
+            "3. Are you currently taking any medications?\n"
+            "4. Do you have any known allergies or pre-existing conditions?\n"
+            "5. Have you experienced similar symptoms before?"
         )
 
     try:
@@ -96,23 +97,36 @@ def consultation_analysis(symptoms: str) -> str:
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a medical AI assistant. Based on the patient's symptoms, generate 4-5 specific questions a doctor should ask to narrow down the diagnosis. Return only numbered questions, one per line. Reply in English only."
+                    "content": (
+                        "You are a medical AI assistant. Based on the patient's specific symptoms, "
+                        "generate 4-5 targeted follow-up questions a doctor should ask to narrow down "
+                        "the diagnosis. Each question must be directly relevant to the symptoms described. "
+                        "CRITICAL: You MUST reply in English ONLY. Do NOT use any other language. "
+                        "Return ONLY numbered questions, one per line, with no extra text."
+                    )
                 },
                 {"role": "user", "content": f"Patient symptoms: {symptoms}"},
             ],
-            temperature=0.7,
+            temperature=0.9,
         )
         content = response.choices[0].message.content or ""
-        return content.strip() or (
-            "1. When did your symptoms start?\n"
-            "2. Are you currently taking any medications?\n"
-            "3. Do you have any known allergies?\n"
-            "4. Please rate your pain level (1-10)"
-        )
+        # Filter out any non-English content
+        cleaned = content.strip()
+        if not cleaned or any('\u4e00' <= c <= '\u9fff' for c in cleaned):
+            # Fallback if AI returned Chinese or empty
+            return (
+                "1. When did your symptoms start?\n"
+                "2. How would you describe the severity on a scale of 1-10?\n"
+                "3. Are you currently taking any medications?\n"
+                "4. Do you have any known allergies or pre-existing conditions?\n"
+                "5. Have you experienced similar symptoms before?"
+            )
+        return cleaned
     except Exception:
         return (
             "1. When did your symptoms start?\n"
-            "2. Are you currently taking any medications?\n"
-            "3. Do you have any known allergies?\n"
-            "4. Please rate your pain level (1-10)"
+            "2. How would you describe the severity on a scale of 1-10?\n"
+            "3. Are you currently taking any medications?\n"
+            "4. Do you have any known allergies or pre-existing conditions?\n"
+            "5. Have you experienced similar symptoms before?"
         )
