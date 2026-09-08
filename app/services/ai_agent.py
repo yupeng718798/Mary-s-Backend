@@ -96,7 +96,7 @@ def consultation_analysis(symptoms: str) -> str:
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a medical AI assistant. Based on the patient's symptoms, generate 4-5 specific questions a doctor should ask to narrow down the diagnosis. Return only numbered questions, one per line."
+                    "content": "You are a medical AI assistant. Based on the patient's symptoms, generate 4-5 specific questions a doctor should ask to narrow down the diagnosis. Return only numbered questions, one per line. Reply in English only."
                 },
                 {"role": "user", "content": f"Patient symptoms: {symptoms}"},
             ],
