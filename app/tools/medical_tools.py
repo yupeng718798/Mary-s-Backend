@@ -51,7 +51,7 @@ def analyze_medical_record(db: Session, record_id: str) -> dict:
 
     title = record.title or ""
     record_type = record.record_type or ""
-    text_for_analysis = f"病历标题: {title}\n类型: {record_type}\n内容: {title}"
+    text_for_analysis = f"Medical Record Title: {title}\nType: {record_type}\nContent: {title}"
 
     result = ai_medical_analysis(text_for_analysis)
 

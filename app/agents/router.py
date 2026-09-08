@@ -11,26 +11,26 @@ AGENT_REGISTRY = {
     "medical": {
         "class": MedicalAgent,
         "name": "Medical Analysis Agent",
-        "description": "病历分析、检查报告解读、健康风险评估",
-        "keywords": ["病历", "报告", "检查", "化验", "分析", "血", "尿", "体检", "结果", "风险"],
+        "description": "Medical record analysis, lab report interpretation, health risk assessment",
+        "keywords": ["record", "report", "test", "lab", "analysis", "blood", "urine", "exam", "result", "risk"],
     },
     "consultation": {
         "class": ConsultationAgent,
         "name": "Consultation Agent",
-        "description": "问诊导航、症状分析、就医流程指引",
-        "keywords": ["症状", "看病", "医生", "问诊", "预约", "GP", "专科", "急诊", "疼痛", "不舒服", "头疼", "发烧"],
+        "description": "Consultation navigation, symptom analysis, healthcare visit guidance",
+        "keywords": ["symptom", "doctor", "consult", "appointment", "GP", "specialist", "emergency", "pain", "sick", "headache", "fever"],
     },
     "medication": {
         "class": MedicationAgent,
         "name": "Medication Agent",
-        "description": "药物管理、用药提醒、药物相互作用",
-        "keywords": ["药", "吃药", "服药", "药物", "剂量", "副作用", "提醒", "处方", "药盒"],
+        "description": "Medication management, dosage reminders, drug interaction lookup",
+        "keywords": ["medication", "drug", "pill", "dose", "dosage", "side effect", "reminder", "prescription", "medicine"],
     },
     "health": {
         "class": HealthSummaryAgent,
         "name": "Health Summary Agent",
-        "description": "健康总览、综合评估、健康建议",
-        "keywords": ["健康", "总览", "总结", "概况", "整体", "怎么样", "状况", "状态"],
+        "description": "Health overview, comprehensive assessment, wellness recommendations",
+        "keywords": ["health", "summary", "overview", "overall", "status", "condition", "wellness"],
     },
 }
 
@@ -39,7 +39,7 @@ def _keyword_route(message: str) -> str:
     msg = message.lower()
     scores = {}
     for agent_key, agent_info in AGENT_REGISTRY.items():
-        score = sum(1 for kw in agent_info["keywords"] if kw in message or kw.lower() in msg)
+        score = sum(1 for kw in agent_info["keywords"] if kw.lower() in msg)
         scores[agent_key] = score
     best_agent = max(scores, key=scores.get)
     if scores[best_agent] > 0:
@@ -56,14 +56,14 @@ def _llm_route(message: str) -> str:
         [f"- {key}: {info['description']}" for key, info in AGENT_REGISTRY.items()]
     )
 
-    prompt = f"""根据用户消息，判断应该路由到哪个 AI Agent。
+    prompt = f"""Based on the user message, determine which AI Agent to route to.
 
-可用的 Agent：
+Available Agents:
 {agent_descriptions}
 
-用户消息：{message}
+User Message: {message}
 
-请只返回 Agent 的 key（medical / consultation / medication / health），不要返回其他内容。
+Return only the Agent key (medical / consultation / medication / health), nothing else.
 """
 
     try:
@@ -83,7 +83,8 @@ def _llm_route(message: str) -> str:
 
 
 def route_and_run(db: Session, user_id: str, message: str) -> dict:
-    agent_key = _llm_route(message)
+    # Use keyword routing to avoid extra LLM call (saves 10-20 seconds)
+    agent_key = _keyword_route(message)
     agent_info = AGENT_REGISTRY.get(agent_key, AGENT_REGISTRY["health"])
     agent_class = agent_info["class"]
     agent = agent_class(db, user_id)
@@ -107,3 +108,34 @@ def route_and_run(db: Session, user_id: str, message: str) -> dict:
         "agent_key": agent_key,
         "response": response,
     }
+
+
+def route_and_run_stream(db: Session, user_id: str, message: str):
+    """Streaming route: keyword routing + Agent streaming output"""
+    agent_key = _keyword_route(message)
+    agent_info = AGENT_REGISTRY.get(agent_key, AGENT_REGISTRY["health"])
+    agent_class = agent_info["class"]
+    agent = agent_class(db, user_id)
+
+    # Send agent metadata first
+    yield {"type": "meta", "agent": agent_info["name"], "agent_key": agent_key}
+
+    # Stream agent response
+    full_response = ""
+    for chunk in agent.run_stream(message):
+        full_response += chunk
+        yield {"type": "content", "content": chunk}
+
+    # Save log
+    try:
+        log = AgentLog(
+            user_id=user_id,
+            agent_type=agent_info["name"],
+            input=message,
+            output=full_response,
+            model=ZHIPU_MODEL,
+        )
+        db.add(log)
+        db.commit()
+    except Exception:
+        db.rollback()

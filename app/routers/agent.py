@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from uuid import UUID
+import json
 from app.database.connection import get_db
-from app.agents.router import route_and_run, AGENT_REGISTRY
+from app.agents.router import route_and_run, route_and_run_stream, AGENT_REGISTRY
 from app.models.medication import AgentLog
 
 
@@ -28,6 +30,19 @@ def agent_chat(req: ChatRequest, db: Session = Depends(get_db)):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chat/stream")
+def agent_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
+    """Streaming SSE endpoint: token-level real-time response"""
+    def generate():
+        try:
+            for event in route_and_run_stream(db, req.user_id, req.message):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @router.get("/list")

@@ -28,12 +28,22 @@ def upload_record(
 ):
     file_url = None
     if file:
+        # File type validation
+        allowed_types = ["image/jpeg", "image/jpg", "image/png"]
+        if file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type: {file.content_type}. Only .jpg, .jpeg, .png images are supported."
+            )
+        
+        # Save file
         filename = f"{uuid.uuid4()}_{file.filename}"
         file_path = os.path.join(UPLOAD_DIR, filename)
         with open(file_path, "wb") as f:
             f.write(file.file.read())
         file_url = file_path
 
+    # Create medical record
     record = MedicalRecord(
         user_id=user_id,
         title=title,
@@ -44,6 +54,52 @@ def upload_record(
     db.add(record)
     db.commit()
     db.refresh(record)
+    
+    # If image file exists, perform OCR and AI analysis
+    if file_url and os.path.exists(file_url):
+        try:
+            # 1. OCR text extraction
+            extracted_text = extract_text(file_url)
+            
+            # 2. AI analysis
+            if extracted_text and not extracted_text.startswith("["):
+                analysis_prompt = (
+                    f"A patient has uploaded a medical image report.\n"
+                    f"File name: {title}\n"
+                    f"File type: {record_type or 'Medical image'}\n\n"
+                    f"Extracted text content:\n{extracted_text[:3000]}\n\n"
+                    f"Please analyze the above content and provide:\n"
+                    f"1. Brief summary (2-3 sentences)\n"
+                    f"2. Risk level: low/medium/high\n"
+                    f"3. Key details or recommendations to note"
+                )
+            else:
+                analysis_prompt = (
+                    f"A patient has uploaded a medical image report.\n"
+                    f"File name: {title}\n"
+                    f"OCR extraction result: {extracted_text or 'Unable to extract text'}\n"
+                    f"Please note this is a preliminary analysis based on the file name. Recommend the patient review the actual report."
+                )
+            
+            ai_result = run_medical_analysis(analysis_prompt)
+            
+            # 3. Save analysis results (including OCR text)
+            analysis = MedicalAnalysis(
+                record_id=record.id,
+                extracted_text=extracted_text,
+                agent_name="Medical Analysis Agent",
+                summary=ai_result.get("summary", ""),
+                risk_level=ai_result.get("risk_level", "unknown"),
+            )
+            db.add(analysis)
+            record.status = "analyzed"
+            db.commit()
+            
+        except Exception as e:
+            # If OCR or analysis fails, log the error but don't block the upload
+            print(f"OCR or AI analysis failed: {str(e)}")
+            pass
+    
     return record
 
 
@@ -63,30 +119,30 @@ def analyze_record(record_id: UUID, db: Session = Depends(get_db)):
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
 
-    # 尝试提取文件内容
+    # Try to extract file content
     extracted = ""
     if record.file_url and os.path.exists(record.file_url):
         extracted = extract_text(record.file_url)
 
     if extracted and not extracted.startswith("["):
         text = (
-            f"患者上传了一份医疗文件。"
-            f"文件名: {record.title}. "
-            f"文件类型: {record.record_type or '一般检查'}. "
-            f"提取的文本内容:\n{extracted[:3000]}\n\n"
-            f"请基于上述内容进行分析，提供："
-            f"1. 简短摘要（2-3句话）"
-            f"2. 风险等级：low/medium/high"
-            f"3. 需要注意的关键细节或建议"
+            f"A patient has uploaded a medical file.\n"
+            f"File name: {record.title}\n"
+            f"File type: {record.record_type or 'General checkup'}\n"
+            f"Extracted text content:\n{extracted[:3000]}\n\n"
+            f"Please analyze the above content and provide:\n"
+            f"1. Brief summary (2-3 sentences)\n"
+            f"2. Risk level: low/medium/high\n"
+            f"3. Key details or recommendations to note"
         )
     else:
         text = (
-            f"患者上传了一份医疗文件。"
-            f"文件名: {record.title}. "
-            f"文件类型: {record.record_type or '一般检查'}. "
-            f"文件内容提取结果: {extracted or '无法提取'}. "
-            f"请基于文件名和类型，给出可能的检查项目说明、常见指标解读，以及一般性的健康建议。"
-            f"如果无法确定具体内容，请说明这是基于文件名的初步分析，建议患者查看实际报告。"
+            f"A patient has uploaded a medical file.\n"
+            f"File name: {record.title}\n"
+            f"File type: {record.record_type or 'General checkup'}\n"
+            f"File content extraction result: {extracted or 'Unable to extract'}\n"
+            f"Based on the file name and type, provide possible test descriptions, common indicator interpretations, and general health advice.\n"
+            f"If unable to determine specific content, note this is a preliminary analysis and recommend the patient review the actual report."
         )
 
     result = run_medical_analysis(text)

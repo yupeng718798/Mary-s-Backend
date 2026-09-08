@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 from pathlib import Path
 
-# 加载 .env 文件（支持从项目根目录或当前工作目录）
+# Load .env file (supports project root or current working directory)
 load_dotenv()
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
@@ -44,24 +44,24 @@ def medical_analysis(text: str) -> dict:
             messages=[
                 {
                     "role": "system",
-                    "content": "你是一个医疗AI助手。分析医疗文本并提供：1. 简短摘要（2-3句话）2. 风险等级：low/medium/high 3. 需要注意的关键细节。请用以下格式回复：Summary: ...\nRisk: ...\nDetails: ..."
+                    "content": "You are a medical AI assistant. Analyze the medical text and provide: 1. Brief summary (2-3 sentences) 2. Risk level: low/medium/high 3. Key details to note. Reply in this format: Summary: ...\nRisk: ...\nDetails: ..."
                 },
-                {"role": "user", "content": f"医疗文本：{text}"},
+                {"role": "user", "content": f"Medical text: {text}"},
             ],
             temperature=0.7,
         )
         content = response.choices[0].message.content or ""
 
-        summary = "无法生成摘要"
+        summary = "Unable to generate summary"
         risk_level = "unknown"
         details = ""
 
         for line in content.splitlines():
-            if line.lower().startswith("summary:") or line.startswith("摘要") or line.startswith("Summary:"):
+            if line.lower().startswith("summary:"):
                 summary = line.split(":", 1)[1].strip() if ":" in line else line
-            elif line.lower().startswith("risk:") or line.startswith("风险") or line.startswith("Risk:"):
+            elif line.lower().startswith("risk:"):
                 risk_level = line.split(":", 1)[1].strip() if ":" in line else "unknown"
-            elif line.lower().startswith("details:") or line.startswith("细节") or line.startswith("Details:"):
+            elif line.lower().startswith("details:"):
                 details = line.split(":", 1)[1].strip() if ":" in line else ""
 
         if not details:
@@ -74,7 +74,7 @@ def medical_analysis(text: str) -> dict:
         }
     except Exception as e:
         return {
-            "summary": f"AI分析失败: {str(e)}",
+            "summary": f"AI analysis failed: {str(e)}",
             "risk_level": "unknown",
             "details": str(e),
         }
@@ -84,10 +84,10 @@ def consultation_analysis(symptoms: str) -> str:
     client = _get_client()
     if client is None:
         return (
-            "1. 症状是什么时候开始的？\n"
-            "2. 目前是否在服用任何药物？\n"
-            "3. 是否有任何已知过敏？\n"
-            "4. 请描述疼痛等级（1-10）"
+            "1. When did your symptoms start?\n"
+            "2. Are you currently taking any medications?\n"
+            "3. Do you have any known allergies?\n"
+            "4. Please rate your pain level (1-10)"
         )
 
     try:
@@ -96,23 +96,23 @@ def consultation_analysis(symptoms: str) -> str:
             messages=[
                 {
                     "role": "system",
-                    "content": "你是一个医疗AI助手。根据患者的症状，生成4-5个医生应该询问的具体问题来缩小诊断范围。只需返回编号的问题，每行一个。"
+                    "content": "You are a medical AI assistant. Based on the patient's symptoms, generate 4-5 specific questions a doctor should ask to narrow down the diagnosis. Return only numbered questions, one per line."
                 },
-                {"role": "user", "content": f"患者症状：{symptoms}"},
+                {"role": "user", "content": f"Patient symptoms: {symptoms}"},
             ],
             temperature=0.7,
         )
         content = response.choices[0].message.content or ""
         return content.strip() or (
-            "1. 症状是什么时候开始的？\n"
-            "2. 目前是否在服用任何药物？\n"
-            "3. 是否有任何已知过敏？\n"
-            "4. 请描述疼痛等级（1-10）"
+            "1. When did your symptoms start?\n"
+            "2. Are you currently taking any medications?\n"
+            "3. Do you have any known allergies?\n"
+            "4. Please rate your pain level (1-10)"
         )
     except Exception:
         return (
-            "1. 症状是什么时候开始的？\n"
-            "2. 目前是否在服用任何药物？\n"
-            "3. 是否有任何已知过敏？\n"
-            "4. 请描述疼痛等级（1-10）"
+            "1. When did your symptoms start?\n"
+            "2. Are you currently taking any medications?\n"
+            "3. Do you have any known allergies?\n"
+            "4. Please rate your pain level (1-10)"
         )

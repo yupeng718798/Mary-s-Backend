@@ -7,27 +7,26 @@ from app.tools.medical_tools import (
 )
 
 
-SYSTEM_PROMPT = """你是 Mary 医疗 AI 助手的 Consultation Agent（问诊导航智能体）。
+SYSTEM_PROMPT = """You are the Consultation Agent of Mary Healthcare AI.
 
-你的职责：
-1. 帮用户梳理症状，判断严重程度
-2. 生成看医生时应该问的问题清单
-3. 提供就诊流程指引（GP → Specialist）
-4. 提醒看诊前需要准备什么
+Your responsibilities:
+1. Help users organize symptoms and assess severity
+2. Generate a list of questions to ask the doctor
+3. Provide visit navigation guidance (GP -> Specialist)
+4. Remind users what to prepare before a doctor's visit
 
-工作方式：
-- 你可以访问用户的问诊历史、病历记录和基本信息
-- 当用户描述症状时，先了解症状持续时间、严重程度等
-- 生成 4-5 个建议问医生的具体问题
-- 给出就诊建议：家庭医生 / 专科 / 急诊
-- 提醒准备材料：检查报告、药物清单、既往病史
+Workflow:
+- You have access to the user's consultation history, medical records, and basic profile
+- When users describe symptoms, ask about duration, severity, etc.
+- Generate 4-5 specific questions to ask the doctor
+- Give visit advice: GP / Specialist / Emergency
+- Remind them to prepare: test reports, medication list, medical history
 
-请用中文回复，语气亲切自然。始终提醒：AI 建议仅供参考，不能替代医生诊断。"""
-
+Reply in English, in a warm and natural tone. Always remind: AI advice is for reference only and does not replace a doctor's diagnosis."""
 
 class ConsultationAgent:
     name = "Consultation Agent"
-    description = "负责问诊导航、症状分析、就医流程指引"
+    description = "Consultation navigation, symptom analysis, healthcare visit guidance"
 
     def __init__(self, db: Session, user_id: str):
         self.db = db
@@ -39,28 +38,28 @@ class ConsultationAgent:
         records = get_medical_records(self.db, self.user_id)
         profile = get_profile(self.db, self.user_id)
 
-        context = f"""用户信息：
-姓名: {profile.get('full_name', '未知') if profile else '未知'}
+        context = f"""User Info:
+Name: {profile.get('full_name', 'Unknown') if profile else 'Unknown'}
 
-既往病历（最近 {len(records)} 条）：
+Medical History (recent {len(records)} records):
 """
         for r in records:
             context += f"- {r['title']} ({r['record_type']})\n"
 
         if consultations:
-            context += f"\n问诊历史（最近 {len(consultations)} 条）：\n"
+            context += f"\nConsultation History (recent {len(consultations)}):\n"
             for c in consultations[:3]:
-                context += f"- 症状: {c['symptoms'][:50]}...\n  状态: {c['status']}\n"
+                context += f"- Symptoms: {c['symptoms'][:50]}...\n  Status: {c['status']}\n"
 
         if self.client is None:
             return (
-                "我来帮你整理一下问诊思路！\n\n"
-                "看医生前建议准备好这些问题：\n"
-                "1. 我的症状可能是什么原因引起的？\n"
-                "2. 需要做什么检查吗？\n"
-                "3. 这种情况需要复诊吗？\n"
-                "4. 日常生活有什么需要注意的？\n\n"
-                "请告诉我你的具体症状，我可以帮你更有针对性地准备。"
+                "Let me help you organize your consultation approach!\n\n"
+                "Here are questions to prepare before seeing a doctor:\n"
+                "1. What could be causing my symptoms?\n"
+                "2. What tests do I need?\n"
+                "3. Will I need a follow-up appointment?\n"
+                "4. What lifestyle changes should I consider?\n\n"
+                "Tell me your specific symptoms and I can help you prepare better."
             )
 
         try:
@@ -68,10 +67,56 @@ class ConsultationAgent:
                 model=ZHIPU_MODEL,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": f"{context}\n\n用户描述的症状/问题：{user_message}"},
+                    {"role": "user", "content": f"{context}\n\nUser's symptoms / question: {user_message}"},
                 ],
                 temperature=0.7,
             )
-            return response.choices[0].message.content or "抱歉，我暂时无法回答这个问题。"
+            return response.choices[0].message.content or "Sorry, I'm unable to answer this right now."
         except Exception as e:
-            return f"Consultation Agent 出错了：{str(e)}"
+            return f"Consultation Agent error: {str(e)}"
+
+    def run_stream(self, user_message: str):
+        consultations = get_consultations(self.db, self.user_id)
+        records = get_medical_records(self.db, self.user_id)
+        profile = get_profile(self.db, self.user_id)
+
+        context = f"""User Info:
+Name: {profile.get('full_name', 'Unknown') if profile else 'Unknown'}
+
+Medical History (recent {len(records)} records):
+"""
+        for r in records:
+            context += f"- {r['title']} ({r['record_type']})\n"
+
+        if consultations:
+            context += f"\nConsultation History (recent {len(consultations)}):\n"
+            for c in consultations[:3]:
+                context += f"- Symptoms: {c['symptoms'][:50]}...\n  Status: {c['status']}\n"
+
+        if self.client is None:
+            yield (
+                "Let me help you organize your consultation approach!\n\n"
+                "Here are questions to prepare before seeing a doctor:\n"
+                "1. What could be causing my symptoms?\n"
+                "2. What tests do I need?\n"
+                "3. Will I need a follow-up appointment?\n"
+                "4. What lifestyle changes should I consider?\n\n"
+                "Tell me your specific symptoms and I can help you prepare better."
+            )
+            return
+
+        try:
+            response = self.client.chat.completions.create(
+                model=ZHIPU_MODEL,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": f"{context}\n\nUser's symptoms / question: {user_message}"},
+                ],
+                temperature=0.7,
+                stream=True,
+            )
+            for chunk in response:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        except Exception as e:
+            yield f"Consultation Agent error: {str(e)}"

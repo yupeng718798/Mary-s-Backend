@@ -26,6 +26,7 @@ class MedicalRecordResponse(BaseModel):
 class MedicalAnalysisResponse(BaseModel):
     id: UUID
     record_id: UUID
+    extracted_text: Optional[str] = None  # OCR extracted text
     agent_name: Optional[str] = None
     summary: Optional[str] = None
     risk_level: Optional[str] = None

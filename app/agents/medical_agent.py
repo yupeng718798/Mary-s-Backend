@@ -7,26 +7,25 @@ from app.tools.medical_tools import (
 )
 
 
-SYSTEM_PROMPT = """你是 Mary 医疗 AI 助手的 Medical Analysis Agent（病历分析智能体）。
+SYSTEM_PROMPT = """You are the Medical Analysis Agent of Mary Healthcare AI.
 
-你的职责：
-1. 帮用户查询和分析医疗记录
-2. 解释检查报告和化验结果
-3. 提供通俗易懂的医学解释
-4. 提醒需要关注的风险指标
+Your responsibilities:
+1. Help users query and analyze medical records
+2. Explain lab reports and test results in plain language
+3. Provide easy-to-understand medical explanations
+4. Flag risk indicators that need attention
 
-工作方式：
-- 你可以访问用户的病历记录和基本信息
-- 用通俗易懂的语言总结，避免过于专业的术语
-- 风险等级用中文标注：低风险 / 中风险 / 高风险
-- 始终提醒：AI 分析仅供参考，不能替代医生诊断
+Workflow:
+- You have access to the user's medical records and basic profile
+- Summarize findings in plain, accessible language
+- Risk levels: Low / Medium / High
+- Always remind: AI analysis is for reference only and does not replace a doctor's diagnosis
 
-请用中文回复，语气亲切专业。"""
-
+Reply in English, in a warm and professional tone."""
 
 class MedicalAgent:
     name = "Medical Analysis Agent"
-    description = "负责病历分析、检查报告解读、健康风险评估"
+    description = "Medical record analysis, lab report interpretation, health risk assessment"
 
     def __init__(self, db: Session, user_id: str):
         self.db = db
@@ -43,30 +42,30 @@ class MedicalAgent:
             if analysis:
                 analyses.append(analysis)
 
-        context = f"""用户信息：
-姓名: {profile.get('full_name', '未知') if profile else '未知'}
-性别: {profile.get('gender', '未知') if profile else '未知'}
+        context = f"""User Info:
+Name: {profile.get('full_name', 'Unknown') if profile else 'Unknown'}
+Gender: {profile.get('gender', 'Unknown') if profile else 'Unknown'}
 
-病历记录（最近 {len(records)} 条）：
+Medical Records (recent {len(records)}):
 """
         for r in records:
-            context += f"- {r['title']} ({r['record_type']}, 状态: {r['status']})\n"
+            context += f"- {r['title']} ({r['record_type']}, Status: {r['status']})\n"
 
         if analyses:
-            context += "\n已分析的报告：\n"
+            context += "\nAnalyzed Reports:\n"
             for a in analyses:
-                context += f"- 摘要: {a.get('summary', '无')}\n  风险等级: {a.get('risk_level', '未知')}\n"
+                context += f"- Summary: {a.get('summary', 'N/A')}\n  Risk Level: {a.get('risk_level', 'Unknown')}\n"
 
         if self.client is None:
-            name = profile.get('full_name', '用户') if profile else '用户'
+            name = profile.get('full_name', 'User') if profile else 'User'
             return (
-                f"你好，{name}！\n\n"
-                f"你目前有 {len(records)} 份病历记录。\n\n"
-                f"我可以帮你：\n"
-                f"1. 查看病历列表\n"
-                f"2. 分析检查报告\n"
-                f"3. 解读化验指标\n\n"
-                f"（AI 服务未配置，以上为演示回复）"
+                f"Hello, {name}!\n\n"
+                f"You currently have {len(records)} medical record(s).\n\n"
+                f"I can help you with:\n"
+                f"1. Viewing your medical record list\n"
+                f"2. Analyzing lab reports\n"
+                f"3. Interpreting test results\n\n"
+                f"(AI service not configured — demo response)"
             )
 
         try:
@@ -74,10 +73,64 @@ class MedicalAgent:
                 model=ZHIPU_MODEL,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": f"{context}\n\n用户问题：{user_message}"},
+                    {"role": "user", "content": f"{context}\n\nUser Question: {user_message}"},
                 ],
                 temperature=0.7,
             )
-            return response.choices[0].message.content or "抱歉，我暂时无法回答这个问题。"
+            return response.choices[0].message.content or "Sorry, I'm unable to answer this right now."
         except Exception as e:
-            return f"Medical Agent 出错了：{str(e)}"
+            return f"Medical Agent error: {str(e)}"
+
+    def run_stream(self, user_message: str):
+        """Streaming: yields LLM tokens as they are generated"""
+        records = get_medical_records(self.db, self.user_id)
+        profile = get_profile(self.db, self.user_id)
+
+        analyses = []
+        for r in records[:3]:
+            analysis = get_medical_analysis(self.db, r["id"])
+            if analysis:
+                analyses.append(analysis)
+
+        context = f"""User Info:
+Name: {profile.get('full_name', 'Unknown') if profile else 'Unknown'}
+Gender: {profile.get('gender', 'Unknown') if profile else 'Unknown'}
+
+Medical Records (recent {len(records)}):
+"""
+        for r in records:
+            context += f"- {r['title']} ({r['record_type']}, Status: {r['status']})\n"
+
+        if analyses:
+            context += "\nAnalyzed Reports:\n"
+            for a in analyses:
+                context += f"- Summary: {a.get('summary', 'N/A')}\n  Risk Level: {a.get('risk_level', 'Unknown')}\n"
+
+        if self.client is None:
+            name = profile.get('full_name', 'User') if profile else 'User'
+            yield (
+                f"Hello, {name}!\n\n"
+                f"You currently have {len(records)} medical record(s).\n\n"
+                f"I can help you with:\n"
+                f"1. Viewing your medical record list\n"
+                f"2. Analyzing lab reports\n"
+                f"3. Interpreting test results\n\n"
+                f"(AI service not configured — demo response)"
+            )
+            return
+
+        try:
+            response = self.client.chat.completions.create(
+                model=ZHIPU_MODEL,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": f"{context}\n\nUser Question: {user_message}"},
+                ],
+                temperature=0.7,
+                stream=True,
+            )
+            for chunk in response:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        except Exception as e:
+            yield f"Medical Agent error: {str(e)}"
