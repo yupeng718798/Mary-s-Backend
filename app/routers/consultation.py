@@ -39,3 +39,13 @@ def update_consultation(consultation_id: UUID, data: ConsultationUpdate, db: Ses
     db.commit()
     db.refresh(consultation)
     return consultation
+
+
+@router.delete("/{consultation_id}")
+def delete_consultation(consultation_id: UUID, db: Session = Depends(get_db)):
+    consultation = db.query(Consultation).filter(Consultation.id == consultation_id).first()
+    if not consultation:
+        raise HTTPException(status_code=404, detail="Consultation not found")
+    db.delete(consultation)
+    db.commit()
+    return {"message": "Consultation deleted"}

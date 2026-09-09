@@ -168,6 +168,27 @@ def get_record(record_id: UUID, db: Session = Depends(get_db)):
     return record
 
 
+@router.delete("/{record_id}")
+def delete_record(record_id: UUID, db: Session = Depends(get_db)):
+    record = db.query(MedicalRecord).filter(MedicalRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+
+    # Delete associated analyses first
+    db.query(MedicalAnalysis).filter(MedicalAnalysis.record_id == record_id).delete()
+
+    # Remove the uploaded file if it exists
+    if record.file_url and os.path.exists(record.file_url):
+        try:
+            os.remove(record.file_url)
+        except Exception:
+            pass
+
+    db.delete(record)
+    db.commit()
+    return {"message": "Record deleted"}
+
+
 @router.post("/report/generate", response_model=ReportResponse)
 def generate_report(data: ReportCreate, db: Session = Depends(get_db)):
     record = db.query(MedicalRecord).filter(MedicalRecord.id == data.record_id).first()
